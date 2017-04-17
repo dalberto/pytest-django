@@ -82,15 +82,13 @@ def django_db_setup(
     if not django_db_use_migrations:
         _disable_native_migrations()
 
-    if django_db_keepdb:
-        if get_django_version() >= (1, 8):
-            setup_databases_args['keepdb'] = True
-        else:
-            # Django 1.7 compatibility
-            from .db_reuse import monkey_patch_creation_for_db_reuse
+    if _is_xdist_one_db_enabled(request.config):
+        with django_db_blocker.unblock():
+            _setup_reused_databases(django_db_blocker)
+        return
 
-            with django_db_blocker.unblock():
-                monkey_patch_creation_for_db_reuse()
+    if django_db_keepdb:
+        _setup_reused_databases(django_db_blocker)
 
     with django_db_blocker.unblock():
         db_cfg = setup_databases(
@@ -108,6 +106,33 @@ def django_db_setup(
 
     if not django_db_keepdb:
         request.addfinalizer(teardown_database)
+
+
+def _setup_reused_databases(django_db_blocker):
+    from .compat import setup_databases
+    db_args = {}
+
+    if get_django_version() >= (1, 8):
+        db_args['keepdb'] = True
+    else:
+        # Django 1.7 compatibility
+        from .db_reuse import monkey_patch_creation_for_db_reuse
+
+        with django_db_blocker.unblock():
+            monkey_patch_creation_for_db_reuse()
+
+    return setup_databases(verbosity=pytest.config.option.verbose, interactive=False, **db_args)
+
+
+def _is_xdist_one_db_enabled(config):
+    from django.conf import settings
+    is_sqlite = (settings.DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3')
+
+    one_db = config.getvalue('xdist_one_db')
+    if one_db and is_sqlite:
+        raise ValueError("xdist-one-db option can not be used together with sqlite3 backend")
+
+    return one_db
 
 
 def _django_db_fixture_helper(transactional, request, django_db_blocker):

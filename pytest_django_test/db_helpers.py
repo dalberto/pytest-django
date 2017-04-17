@@ -53,6 +53,13 @@ def run_mysql(*args):
     return run_cmd(*args)
 
 
+def skip_if_sqlite():
+    from django.conf import settings
+
+    if settings.DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
+        pytest.skip('Skip if sqlite3 backend')
+
+
 def skip_if_sqlite_in_memory():
     if _settings['ENGINE'] == 'django.db.backends.sqlite3' and _settings['TEST']['NAME'] is None:
         pytest.skip('Do not test db reuse since database does not support it')

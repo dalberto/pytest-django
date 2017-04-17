@@ -14,8 +14,11 @@ import types
 import py
 import pytest
 
+from .compat import setup_databases  # noqa
+from .db_reuse import monkey_patch_creation_for_db_reuse  # noqa
 from .django_compat import is_django_unittest  # noqa
 from .fixtures import django_assert_num_queries  # noqa
+from .fixtures import _disable_native_migrations  # noqa
 from .fixtures import django_db_setup  # noqa
 from .fixtures import django_db_use_migrations  # noqa
 from .fixtures import django_db_keepdb  # noqa
@@ -55,6 +58,10 @@ def pytest_addoption(parser):
                      action='store_true', dest='create_db', default=False,
                      help='Re-create the database, even if it exists. This '
                           'option can be used to override --reuse-db.')
+    group._addoption('--xdist-one-db',
+                     action='store_true', dest='xdist_one_db', default=False,
+                     help='Use only one database with xdist plugin. '
+                          'Does not work with sqlite3 backend due to db lock')
     group._addoption('--ds',
                      action='store', type=str, dest='ds', default=None,
                      help='Set DJANGO_SETTINGS_MODULE.')
@@ -250,6 +257,30 @@ def pytest_load_initial_conftests(early_config, parser, args):
 def pytest_report_header(config):
     if config._dsm_report_header:
         return [config._dsm_report_header]
+
+
+def pytest_xdist_setupnodes(config):
+    """called once before any remote node is set up. """
+    if not config.getvalue('xdist_one_db'):
+        return
+
+    _setup_django()
+
+    from django.conf import settings
+    if settings.DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
+        return
+
+    if config.getvalue('nomigrations'):
+        _disable_native_migrations()
+
+    db_args = {}
+    if get_django_version() >= (1, 8):
+        db_args['keepdb'] = True
+    else:
+        monkey_patch_creation_for_db_reuse()
+
+    # Create the database
+    setup_databases(verbosity=config.option.verbose, interactive=False, **db_args)
 
 
 @pytest.mark.trylast

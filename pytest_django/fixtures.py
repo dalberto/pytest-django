@@ -120,8 +120,9 @@ def _setup_reused_databases(django_db_blocker):
 
         with django_db_blocker.unblock():
             monkey_patch_creation_for_db_reuse()
-
-    return setup_databases(verbosity=pytest.config.option.verbose, interactive=False, **db_args)
+    
+    with django_db_blocker.unblock():
+        setup_databases(verbosity=pytest.config.option.verbose, interactive=False, **db_args)
 
 
 def _is_xdist_one_db_enabled(config):

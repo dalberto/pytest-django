@@ -279,8 +279,8 @@ def pytest_xdist_setupnodes(config):
     else:
         monkey_patch_creation_for_db_reuse()
 
-    # Create the database
-    setup_databases(verbosity=config.option.verbose, interactive=False, **db_args)
+    with django_db_blocker().unblock():
+        setup_databases(verbosity=config.option.verbose, interactive=False, **db_args)
 
 
 @pytest.mark.trylast
